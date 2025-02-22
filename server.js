@@ -10,10 +10,9 @@ app.use(express.json());
 // Modified CORS settings to be more permissive
 app.use(cors({
   origin: '*',
-  credentials: true,
+  methods: ['GET', 'POST'],
 }));
 
-const sessions = new Map();
 const transactionHistory = new Map();
 
 // Initialize with modified starting values
@@ -54,15 +53,10 @@ const products = [
   }
 ];
 
-// Simplified session management
+// Simplified login function
 app.post('/login', (req, res) => {
-  const sessionToken = "sess_" + crypto.randomBytes(16).toString('hex');
-  sessions.set(sessionToken, "user_default");
-  
-  // Send more detailed user info in response
   const user = users["user_default"];
   res.json({ 
-    token: sessionToken,
     user: {
       id: user.id,
       balance: user.balance,
@@ -73,16 +67,7 @@ app.post('/login', (req, res) => {
 });
 
 app.get('/api/v2/user/balance', (req, res) => {
-  const sessionToken = req.headers['x-session-token'];
-  
-  // More permissive session checking
-  if (!sessions.has(sessionToken)) {
-    return res.status(401).json({ error: 'Authentication required' });
-  }
-  
-  const userId = sessions.get(sessionToken);
-  const user = users[userId];
-  
+  const user = users["user_default"]; // Assuming a default user
   res.json({ 
     balance: user.balance,
     tier: user.tier,
@@ -90,17 +75,10 @@ app.get('/api/v2/user/balance', (req, res) => {
   });
 });
 
-// Modified purchase endpoint with business logic vulnerability
+// Modified purchase endpoint
 app.post('/api/v2/commerce/purchase', (req, res) => {
   const { productId, quantity = 1 } = req.body;
-  const sessionToken = req.headers['x-session-token'];
-
-  if (!sessions.has(sessionToken)) {
-    return res.status(401).json({ error: 'Authentication required' });
-  }
-
-  const userId = sessions.get(sessionToken);
-  const user = users[userId];
+  const user = users["user_default"]; // Assuming a default user
   const product = products.find(p => p.id === parseInt(productId));
   
   if (!product) {
@@ -111,8 +89,6 @@ app.post('/api/v2/commerce/purchase', (req, res) => {
     return res.status(400).json({ error: 'Insufficient stock' });
   }
 
-  // Vulnerability: Integer overflow in price calculation
-  // Using floating point numbers for price calculations
   let finalPrice = product.basePrice * quantity;
   
   // Apply discount if any
@@ -120,8 +96,6 @@ app.post('/api/v2/commerce/purchase', (req, res) => {
     finalPrice = finalPrice * (1 - product.discount / 100);
   }
 
-  // Vulnerability: Negative quantity check missing
-  // This allows for negative quantities which can increase balance
   if (finalPrice <= user.transactionLimit && finalPrice >= 0) {
     // Process transaction
     user.balance -= finalPrice;
@@ -140,7 +114,7 @@ app.post('/api/v2/commerce/purchase', (req, res) => {
     });
 
     // Flag condition: Successfully purchase hidden item with specific conditions
-    if (product.id === 3 && user.balance >= 800) {
+    if (product.id === 3 && user.balance <= 600) {
       return res.json({
         success: true,
         message: `Transaction successful! ID: ${transactionId}`,
@@ -160,12 +134,6 @@ app.post('/api/v2/commerce/purchase', (req, res) => {
 });
 
 app.get('/api/v2/products', (req, res) => {
-  const sessionToken = req.headers['x-session-token'];
-  
-  if (!sessions.has(sessionToken)) {
-    return res.status(401).json({ error: 'Authentication required' });
-  }
-  
   res.json(products);
 });
 
