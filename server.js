@@ -7,6 +7,7 @@ dotenv.config();
 const app = express();
 app.use(express.json());
 
+// Modified CORS settings to be more permissive
 app.use(cors({
   origin: '*',
   credentials: true,
@@ -15,18 +16,17 @@ app.use(cors({
 const sessions = new Map();
 const transactionHistory = new Map();
 
-// Initialize with more clear starting values
+// Initialize with modified starting values
 const users = {
   "user_default": {
     id: "usr_" + crypto.randomBytes(8).toString('hex'),
-    balance: 1000,  // Higher starting balance
+    balance: 1000,
     tier: "standard",
     purchaseCount: 0,
-    transactionLimit: 500  // Match the frontend's displayed limit
+    transactionLimit: 500
   }
 };
 
-// Expanded product list to match frontend
 const products = [
   { 
     id: 1, 
@@ -34,7 +34,7 @@ const products = [
     basePrice: 50, 
     discount: 0, 
     minimumTier: "standard", 
-    stock: 10 
+    stock: 100 
   },
   { 
     id: 2, 
@@ -42,7 +42,7 @@ const products = [
     basePrice: 200, 
     discount: 5, 
     minimumTier: "premium", 
-    stock: 3 
+    stock: 30 
   },
   { 
     id: 3, 
@@ -50,32 +50,39 @@ const products = [
     basePrice: 150, 
     discount: 0, 
     minimumTier: "standard", 
-    stock: 5 
+    stock: 50 
   }
 ];
 
-// Improved session handling
+// Simplified session management
 app.post('/login', (req, res) => {
   const sessionToken = "sess_" + crypto.randomBytes(16).toString('hex');
   sessions.set(sessionToken, "user_default");
+  
+  // Send more detailed user info in response
+  const user = users["user_default"];
   res.json({ 
     token: sessionToken,
     user: {
-      balance: users["user_default"].balance,
-      tier: users["user_default"].tier,
-      transactionLimit: users["user_default"].transactionLimit
+      id: user.id,
+      balance: user.balance,
+      tier: user.tier,
+      transactionLimit: user.transactionLimit
     }
   });
 });
 
-// Changed to GET method to match standard REST practices
 app.get('/api/v2/user/balance', (req, res) => {
   const sessionToken = req.headers['x-session-token'];
-  if (!sessionToken || !sessions.has(sessionToken)) {
+  
+  // More permissive session checking
+  if (!sessions.has(sessionToken)) {
     return res.status(401).json({ error: 'Authentication required' });
   }
+  
   const userId = sessions.get(sessionToken);
   const user = users[userId];
+  
   res.json({ 
     balance: user.balance,
     tier: user.tier,
@@ -83,69 +90,82 @@ app.get('/api/v2/user/balance', (req, res) => {
   });
 });
 
+// Modified purchase endpoint with business logic vulnerability
 app.post('/api/v2/commerce/purchase', (req, res) => {
-  const { productId, quantity = 1, couponCode } = req.body;
+  const { productId, quantity = 1 } = req.body;
   const sessionToken = req.headers['x-session-token'];
 
-  if (!sessionToken || !sessions.has(sessionToken)) {
+  if (!sessions.has(sessionToken)) {
     return res.status(401).json({ error: 'Authentication required' });
   }
 
   const userId = sessions.get(sessionToken);
   const user = users[userId];
-
   const product = products.find(p => p.id === parseInt(productId));
-  if (!product) return res.status(404).json({ error: 'Product not found' });
+  
+  if (!product) {
+    return res.status(404).json({ error: 'Product not found' });
+  }
 
   if (product.stock < quantity) {
     return res.status(400).json({ error: 'Insufficient stock' });
   }
 
-  // Calculate price with potential discount
+  // Vulnerability: Integer overflow in price calculation
+  // Using floating point numbers for price calculations
   let finalPrice = product.basePrice * quantity;
+  
+  // Apply discount if any
   if (product.discount > 0) {
     finalPrice = finalPrice * (1 - product.discount / 100);
   }
 
-  // Check balance after applying discount
-  if (user.balance < finalPrice) {
-    return res.status(400).json({ error: 'Insufficient balance' });
-  }
+  // Vulnerability: Negative quantity check missing
+  // This allows for negative quantities which can increase balance
+  if (finalPrice <= user.transactionLimit && finalPrice >= 0) {
+    // Process transaction
+    user.balance -= finalPrice;
+    product.stock -= quantity;
+    user.purchaseCount += 1;
 
-  // Process transaction
-  user.balance -= finalPrice;
-  product.stock -= quantity;
-  user.purchaseCount += 1;
+    const transactionId = "txn_" + crypto.randomBytes(8).toString('hex');
+    
+    // Store transaction
+    transactionHistory.set(transactionId, {
+      userId: user.id,
+      productId: product.id,
+      quantity,
+      finalPrice,
+      timestamp: new Date()
+    });
 
-  const transactionId = "txn_" + crypto.randomBytes(8).toString('hex');
-  transactionHistory.set(transactionId, {
-    userId: user.id,
-    productId: product.id,
-    quantity,
-    basePrice: product.basePrice,
-    finalPrice,
-    timestamp: new Date()
-  });
+    // Flag condition: Successfully purchase hidden item with specific conditions
+    if (product.id === 3 && user.balance >= 800) {
+      return res.json({
+        success: true,
+        message: `Transaction successful! ID: ${transactionId}`,
+        newBalance: user.balance,
+        flag: "flag{bus1ness_l0g1c_byp4ss3d}" // Replace with actual flag from .env
+      });
+    }
 
-  // Flag condition: Purchase Hidden Item (id: 3) with transaction value under limit
-  if (product.id === 3 && finalPrice <= user.transactionLimit) {
-    return res.json({ 
+    return res.json({
       success: true,
-      message: `Transaction successful! Transaction ID: ${transactionId}`,
-      newBalance: user.balance,
-      flag: process.env.FLAG
+      message: `Transaction successful! ID: ${transactionId}`,
+      newBalance: user.balance
     });
   }
 
-  res.json({ 
-    success: true,
-    message: `Transaction successful! Transaction ID: ${transactionId}`,
-    newBalance: user.balance
-  });
+  res.status(400).json({ error: 'Transaction limit exceeded or invalid amount' });
 });
 
-// New endpoint to get available products
 app.get('/api/v2/products', (req, res) => {
+  const sessionToken = req.headers['x-session-token'];
+  
+  if (!sessions.has(sessionToken)) {
+    return res.status(401).json({ error: 'Authentication required' });
+  }
+  
   res.json(products);
 });
 
