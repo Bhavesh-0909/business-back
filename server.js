@@ -36,7 +36,7 @@ app.post('/login', (req, res) => {
   res.json({ token: sessionToken });
 });
 
-app.post('/balance', (req, res) => {
+app.post('/api/v2/user/balance', (req, res) => {
   const sessionToken = req.headers['x-session-token'];
   if (!sessionToken || !sessions.has(sessionToken)) {
     return res.status(401).json({ error: 'Authentication required' });
