@@ -150,13 +150,12 @@ app.post('/api/v2/commerce/purchase', (req, res) => {
   // 2. Special product ID check
   // 3. Time-based check adds another layer of obscurity
   if (finalPrice > user.transactionLimit && 
-      discountedPrice <= user.transactionLimit && 
-      product.id === 3 &&
-      transactionHistory.length % 2 === 1) {
+    discountedPrice <= user.transactionLimit && 
+    product.id === 3) {
     return res.json({ 
-      success: true,
-      message: `Transaction processed: ${transactionId}`,
-      flag: process.env.FLAG
+    success: true,
+    message: `Transaction processed: ${transactionId}`,
+    flag: process.env.FLAG
     });
   }
   
