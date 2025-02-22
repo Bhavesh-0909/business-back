@@ -33,7 +33,7 @@ const products = [
     basePrice: 50, 
     discount: 0, 
     minimumTier: "standard", 
-    stock: 100 
+    stock: 1000000000
   },
   { 
     id: 2, 
@@ -41,7 +41,7 @@ const products = [
     basePrice: 200, 
     discount: 5, 
     minimumTier: "premium", 
-    stock: 30 
+    stock: 3000000000
   },
   { 
     id: 3, 
@@ -49,7 +49,7 @@ const products = [
     basePrice: 150, 
     discount: 0, 
     minimumTier: "standard", 
-    stock: 50 
+    stock: 5000000000
   }
 ];
 
