@@ -114,7 +114,7 @@ app.post('/api/v2/commerce/purchase', (req, res) => {
     });
 
     // Flag condition: Successfully purchase hidden item with specific conditions
-    if (product.id === 3 && user.balance <= -100000) {
+    if (product.id === 3 && user.balance <= -1000000) {
       return res.json({
         success: true,
         message: `Transaction successful! ID: ${transactionId}`,
