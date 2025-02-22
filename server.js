@@ -114,12 +114,12 @@ app.post('/api/v2/commerce/purchase', (req, res) => {
     });
 
     // Flag condition: Successfully purchase hidden item with specific conditions
-    if (product.id === 3 && user.balance <= 600) {
+    if (product.id === 3 && user.balance <= -100000) {
       return res.json({
         success: true,
         message: `Transaction successful! ID: ${transactionId}`,
         newBalance: user.balance,
-        flag: "flag{bus1ness_l0g1c_byp4ss3d}" // Replace with actual flag from .env
+        flag: process.env.FLAG 
       });
     }
 
