@@ -13,41 +13,78 @@ app.use(cors({
 }));
 
 const sessions = new Map();
-const transactionHistory = [];
+const transactionHistory = new Map();
 
+// Initialize with more clear starting values
 const users = {
   "user_default": {
     id: "usr_" + crypto.randomBytes(8).toString('hex'),
-    balance: 500,  // Increased balance to make it easier to reach the condition
-    tier: "standard", 
-    purchaseCount: 1, // Ensuring they already made a purchase
-    transactionLimit: 300
+    balance: 1000,  // Higher starting balance
+    tier: "standard",
+    purchaseCount: 0,
+    transactionLimit: 500  // Match the frontend's displayed limit
   }
 };
 
+// Expanded product list to match frontend
 const products = [
-  { id: 3, name: 'Hidden Item', basePrice: 150, discount: 0, minimumTier: "standard", stock: 5 }
+  { 
+    id: 1, 
+    name: 'Basic Item', 
+    basePrice: 50, 
+    discount: 0, 
+    minimumTier: "standard", 
+    stock: 10 
+  },
+  { 
+    id: 2, 
+    name: 'Premium Item', 
+    basePrice: 200, 
+    discount: 5, 
+    minimumTier: "premium", 
+    stock: 3 
+  },
+  { 
+    id: 3, 
+    name: 'Hidden Item', 
+    basePrice: 150, 
+    discount: 0, 
+    minimumTier: "standard", 
+    stock: 5 
+  }
 ];
 
-// Generate session token
+// Improved session handling
 app.post('/login', (req, res) => {
   const sessionToken = "sess_" + crypto.randomBytes(16).toString('hex');
   sessions.set(sessionToken, "user_default");
-  res.json({ token: sessionToken });
+  res.json({ 
+    token: sessionToken,
+    user: {
+      balance: users["user_default"].balance,
+      tier: users["user_default"].tier,
+      transactionLimit: users["user_default"].transactionLimit
+    }
+  });
 });
 
-app.post('/api/v2/user/balance', (req, res) => {
+// Changed to GET method to match standard REST practices
+app.get('/api/v2/user/balance', (req, res) => {
   const sessionToken = req.headers['x-session-token'];
   if (!sessionToken || !sessions.has(sessionToken)) {
     return res.status(401).json({ error: 'Authentication required' });
   }
   const userId = sessions.get(sessionToken);
   const user = users[userId];
-  res.json({ balance: user.balance });
+  res.json({ 
+    balance: user.balance,
+    tier: user.tier,
+    transactionLimit: user.transactionLimit
+  });
 });
 
 app.post('/api/v2/commerce/purchase', (req, res) => {
-  const { productId, quantity = 1 } = req.body;
+  const { productId, quantity = 1, couponCode } = req.body;
   const sessionToken = req.headers['x-session-token'];
 
   if (!sessionToken || !sessions.has(sessionToken)) {
@@ -57,41 +94,62 @@ app.post('/api/v2/commerce/purchase', (req, res) => {
   const userId = sessions.get(sessionToken);
   const user = users[userId];
 
-  const product = products.find(p => p.id == productId);
+  const product = products.find(p => p.id === parseInt(productId));
   if (!product) return res.status(404).json({ error: 'Product not found' });
 
-  if (product.stock < quantity) return res.status(400).json({ error: 'Insufficient stock' });
+  if (product.stock < quantity) {
+    return res.status(400).json({ error: 'Insufficient stock' });
+  }
 
-  const finalPrice = product.basePrice * quantity;
-  
-  if (user.balance < finalPrice) return res.status(400).json({ error: 'Insufficient balance' });
+  // Calculate price with potential discount
+  let finalPrice = product.basePrice * quantity;
+  if (product.discount > 0) {
+    finalPrice = finalPrice * (1 - product.discount / 100);
+  }
 
+  // Check balance after applying discount
+  if (user.balance < finalPrice) {
+    return res.status(400).json({ error: 'Insufficient balance' });
+  }
+
+  // Process transaction
   user.balance -= finalPrice;
   product.stock -= quantity;
   user.purchaseCount += 1;
 
   const transactionId = "txn_" + crypto.randomBytes(8).toString('hex');
-  transactionHistory.push({ id: transactionId, userId: user.id, productId: product.id, quantity, price: finalPrice });
+  transactionHistory.set(transactionId, {
+    userId: user.id,
+    productId: product.id,
+    quantity,
+    basePrice: product.basePrice,
+    finalPrice,
+    timestamp: new Date()
+  });
 
-  if (product.id === 3 && finalPrice <= user.transactionLimit && user.purchaseCount > 1) {
+  // Flag condition: Purchase Hidden Item (id: 3) with transaction value under limit
+  if (product.id === 3 && finalPrice <= user.transactionLimit) {
     return res.json({ 
       success: true,
-      message: `Transaction processed: ${transactionId}`,
-      flag: process.env.FLAG 
+      message: `Transaction successful! Transaction ID: ${transactionId}`,
+      newBalance: user.balance,
+      flag: process.env.FLAG
     });
   }
 
   res.json({ 
     success: true,
-    message: `Transaction processed: ${transactionId}`,
-    newBalance: user.balance 
+    message: `Transaction successful! Transaction ID: ${transactionId}`,
+    newBalance: user.balance
   });
 });
 
-app.get('/', (req, res) => {
-  res.send('API Gateway v2.0');
+// New endpoint to get available products
+app.get('/api/v2/products', (req, res) => {
+  res.json(products);
 });
 
-app.listen(3000, () => {
-  console.log('Service running on http://localhost:3000');
+const PORT = process.env.PORT || 3000;
+app.listen(PORT, () => {
+  console.log(`Server running on port ${PORT}`);
 });
